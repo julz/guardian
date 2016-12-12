@@ -7,9 +7,9 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"code.cloudfoundry.org/garden"
-	"code.cloudfoundry.org/garden-shed/rootfs_provider"
 	"code.cloudfoundry.org/guardian/rundmc/goci"
 	"code.cloudfoundry.org/lager"
 	"github.com/opencontainers/runc/libcontainer/user"
@@ -197,8 +197,8 @@ func (r *execPreparer) lookupUser(bndl goci.Bndl, rootfsPath, username string) (
 
 	uid, gid := u.Uid, u.Gid
 	if len(bndl.Spec.Linux.UIDMappings) > 0 {
-		uid = rootfs_provider.MappingList(bndl.Spec.Linux.UIDMappings).Map(uid)
-		gid = rootfs_provider.MappingList(bndl.Spec.Linux.GIDMappings).Map(gid)
+		uid = MappingList(bndl.Spec.Linux.UIDMappings).Map(uid)
+		gid = MappingList(bndl.Spec.Linux.GIDMappings).Map(gid)
 	}
 
 	return &usr{
@@ -262,4 +262,29 @@ func intersect(l1 []string, l2 []string) (result []string) {
 	}
 
 	return result
+}
+
+type MappingList []specs.LinuxIDMapping
+
+func (m MappingList) Map(id int) int {
+	for _, m := range m {
+		if delta := id - int(m.ContainerID); delta < int(m.Size) {
+			return int(m.HostID) + delta
+		}
+	}
+
+	return id
+}
+
+func (m MappingList) String() string {
+	if len(m) == 0 {
+		return "empty"
+	}
+
+	var parts []string
+	for _, entry := range m {
+		parts = append(parts, fmt.Sprintf("%d-%d-%d", entry.ContainerID, entry.HostID, entry.Size))
+	}
+
+	return strings.Join(parts, ",")
 }

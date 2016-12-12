@@ -38,6 +38,7 @@ type BundleLoader interface {
 
 type OCIRuntime interface {
 	Create(log lager.Logger, bundlePath, id string, io garden.ProcessIO) error
+	Start(log lager.Logger, id, bundlePath string) error
 	Exec(log lager.Logger, id, bundlePath string, spec garden.ProcessSpec, io garden.ProcessIO) (garden.Process, error)
 	Attach(log lager.Logger, id, bundlePath, processId string, io garden.ProcessIO) (garden.Process, error)
 	Kill(log lager.Logger, bundlePath string) error
@@ -121,6 +122,22 @@ func (c *Containerizer) Create(log lager.Logger, spec gardener.DesiredContainerS
 	}()
 
 	return nil
+}
+
+// Start starts the default process in the container
+func (c *Containerizer) Start(log lager.Logger, handle string) error {
+	log = log.Session("start", lager.Data{"handle": handle})
+
+	log.Info("started")
+	defer log.Info("finished")
+
+	path, err := c.depot.Lookup(log, handle)
+	if err != nil {
+		log.Error("lookup-failed", err)
+		return err
+	}
+
+	return c.runtime.Start(log, handle, path)
 }
 
 // Run runs a process inside a running container

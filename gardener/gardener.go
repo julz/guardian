@@ -6,8 +6,9 @@ import (
 	"net/url"
 	"time"
 
+	specs "github.com/opencontainers/runtime-spec/specs-go"
+
 	"code.cloudfoundry.org/garden"
-	"code.cloudfoundry.org/garden-shed/rootfs_provider"
 	"code.cloudfoundry.org/lager"
 )
 
@@ -40,6 +41,8 @@ type Containerizer interface {
 	StreamIn(log lager.Logger, handle string, spec garden.StreamInSpec) error
 	StreamOut(log lager.Logger, handle string, spec garden.StreamOutSpec) (io.ReadCloser, error)
 
+	Start(log lager.Logger, handle string) error
+
 	Run(log lager.Logger, handle string, spec garden.ProcessSpec, io garden.ProcessIO) (garden.Process, error)
 	Attach(log lager.Logger, handle string, processGUID string, io garden.ProcessIO) (garden.Process, error)
 	Stop(log lager.Logger, handle string, kill bool) error
@@ -61,7 +64,7 @@ type Networker interface {
 }
 
 type VolumeCreator interface {
-	Create(log lager.Logger, handle string, spec rootfs_provider.Spec) (string, []string, error)
+	Create(log lager.Logger, handle string, spec DesiredRootFSSpec) (string, []string, error)
 	Destroy(log lager.Logger, handle, rootFSPath string) error
 	Metrics(log lager.Logger, handle, rootFSPath string) (garden.ContainerDiskStat, error)
 	GC(log lager.Logger) error
@@ -94,6 +97,13 @@ func (fn UidGeneratorFunc) Generate() string {
 	return fn()
 }
 
+type DesiredRootFSSpec struct {
+	RootFS     *url.URL
+	Namespaced bool
+	QuotaSize  int64
+	QuotaScope garden.DiskLimitScope
+}
+
 type DesiredContainerSpec struct {
 	Handle string
 
@@ -109,9 +119,18 @@ type DesiredContainerSpec struct {
 	// Container is privileged
 	Privileged bool
 
+	// Resource Limits
 	Limits garden.Limits
 
+	// Environment variables
 	Env []string
+
+	// Netns paths maps a given namespace to a existing path (otherwise the namespace is created)
+	NsPath map[specs.LinuxNamespaceType]string
+
+	// Process specifies the default process to use for the container
+	// (i.e. what is stored in config.json)
+	Process *specs.Process
 }
 
 type ActualContainerSpec struct {
@@ -222,7 +241,7 @@ func (g *Gardener) Create(spec garden.ContainerSpec) (ctr garden.Container, err 
 		rootFSPath = rootFSURL.Path
 	} else {
 		var err error
-		rootFSPath, env, err = g.VolumeCreator.Create(log, spec.Handle, rootfs_provider.Spec{
+		rootFSPath, env, err = g.VolumeCreator.Create(log, spec.Handle, DesiredRootFSSpec{
 			RootFS:     rootFSURL,
 			QuotaSize:  int64(spec.Limits.Disk.ByteHard),
 			QuotaScope: spec.Limits.Disk.Scope,

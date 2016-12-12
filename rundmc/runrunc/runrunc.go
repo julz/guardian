@@ -3,6 +3,9 @@ package runrunc
 import (
 	"os/exec"
 
+	"code.cloudfoundry.org/garden"
+	"code.cloudfoundry.org/lager"
+
 	"github.com/cloudfoundry/gunk/command_runner"
 )
 
@@ -15,7 +18,7 @@ type RunRunc struct {
 	runc          RuncBinary
 
 	*Execer
-	*Creator
+	*DadooCreateStarter
 	*OomWatcher
 	*Statser
 	*Stater
@@ -35,8 +38,8 @@ type RuncBinary interface {
 
 func New(runner command_runner.CommandRunner, runcCmdRunner RuncCmdRunner, runc RuncBinary, dadooPath, runcPath string, execPreparer ExecPreparer, execRunner ExecRunner) *RunRunc {
 	return &RunRunc{
-		Creator: NewCreator(runcPath, runner),
-		Execer:  NewExecer(execPreparer, execRunner),
+		DadooCreateStarter: &DadooCreateStarter{execRunner, runner},
+		Execer:             NewExecer(execPreparer, execRunner),
 
 		OomWatcher: NewOomWatcher(runner, runc),
 		Statser:    NewStatser(runcCmdRunner, runc),
@@ -44,4 +47,18 @@ func New(runner command_runner.CommandRunner, runcCmdRunner RuncCmdRunner, runc 
 		Killer:     NewKiller(runcCmdRunner, runc),
 		Deleter:    NewDeleter(runcCmdRunner, runc),
 	}
+}
+
+type DadooCreateStarter struct {
+	dadooRunner   ExecRunner
+	commandRunner command_runner.CommandRunner
+}
+
+func (r *DadooCreateStarter) Create(log lager.Logger, path, id string, io garden.ProcessIO) error {
+	_, err := r.dadooRunner.Run(log, nil, path, id, nil, garden.ProcessIO{})
+	return err
+}
+
+func (r *DadooCreateStarter) Start(log lager.Logger, id, path string) error {
+	return r.commandRunner.Run(exec.Command("runc", "start", id))
 }

@@ -51,11 +51,15 @@ func (d *ExecRunner) Run(log lager.Logger, spec *runrunc.PreparedSpec, processes
 	log.Info("start")
 	defer log.Info("done")
 
-	processID := d.processIDGen.Generate()
+	processID := "1"
+	processPath := processesPath
+	if spec != nil {
+		processID = d.processIDGen.Generate()
 
-	processPath := filepath.Join(processesPath, processID)
-	if err := os.MkdirAll(processPath, 0700); err != nil {
-		return nil, err
+		processPath = filepath.Join(processesPath, processID)
+		if err := os.MkdirAll(processPath, 0700); err != nil {
+			return nil, err
+		}
 	}
 
 	fd3r, fd3w, err := os.Pipe()
@@ -86,6 +90,8 @@ func (d *ExecRunner) Run(log lager.Logger, spec *runrunc.PreparedSpec, processes
 		}
 
 		cmd = exec.Command(d.dadooPath, "-tty", "-rows", strconv.Itoa(rows), "-cols", strconv.Itoa(cols), "-uid", strconv.Itoa(spec.HostUID), "-gid", strconv.Itoa(spec.HostGID), "exec", d.runcPath, processPath, handle)
+	} else if spec == nil {
+		cmd = exec.Command(d.dadooPath, "create", d.runcPath, processPath, handle)
 	} else {
 		cmd = exec.Command(d.dadooPath, "exec", d.runcPath, processPath, handle)
 	}
@@ -95,12 +101,15 @@ func (d *ExecRunner) Run(log lager.Logger, spec *runrunc.PreparedSpec, processes
 		logw,
 	}
 
-	encodedSpec, err := json.Marshal(spec.Process)
-	if err != nil {
-		return nil, err // this could *almost* be a panic: a valid spec should always encode (but out of caution we'll error)
+	if spec != nil {
+		encodedSpec, err := json.Marshal(spec.Process)
+		if err != nil {
+			return nil, err // this could *almost* be a panic: a valid spec should always encode (but out of caution we'll error)
+		}
+
+		cmd.Stdin = bytes.NewReader(encodedSpec)
 	}
 
-	cmd.Stdin = bytes.NewReader(encodedSpec)
 	if err := d.commandRunner.Start(cmd); err != nil {
 		return nil, err
 	}

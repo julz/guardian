@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/docker/docker/pkg/reexec"
+	"pkg/reexec"
 )
 
 const name = "prepare-rootfs"

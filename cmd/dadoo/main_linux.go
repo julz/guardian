@@ -37,6 +37,7 @@ func main() {
 func run() int {
 	flag.Parse()
 
+	command := flag.Args()[0] // e.g. run, start, exec
 	runtime := flag.Args()[1] // e.g. runc
 	dir := flag.Args()[2]     // bundlePath for run, processPath for exec
 	containerId := flag.Args()[3]
@@ -56,7 +57,12 @@ func run() int {
 		ttySlave := setupTty(stdin, stdout, pidFilePath, winsz, garden.WindowSize{Rows: *rows, Columns: *cols})
 		runcStartCmd = exec.Command(runtime, "-debug", "-log", logFile, "exec", "-d", "-tty", "-console", ttySlave.Name(), "-p", fmt.Sprintf("/proc/%d/fd/0", os.Getpid()), "-pid-file", pidFilePath, containerId)
 	} else {
-		runcStartCmd = exec.Command(runtime, "-debug", "-log", logFile, "exec", "-p", fmt.Sprintf("/proc/%d/fd/0", os.Getpid()), "-d", "-pid-file", pidFilePath, containerId)
+		if command == "start" {
+			runcStartCmd = exec.Command(runtime, "-debug", "-log", logFile, "start", "-d", "-pid-file", pidFilePath, containerId)
+		} else {
+			runcStartCmd = exec.Command(runtime, "-debug", "-log", logFile, "exec", "-p", fmt.Sprintf("/proc/%d/fd/0", os.Getpid()), "-d", "-pid-file", pidFilePath, containerId)
+		}
+
 		runcStartCmd.Stdin = stdin
 		runcStartCmd.Stdout = stdout
 		runcStartCmd.Stderr = stderr
